@@ -148,6 +148,7 @@ def load_cell_gene_data_variable(data_dir, ppi_dense_path, cell_row_norm=True, g
 
     return (ppi_df.values, coo_gene_feature, gene_labels, cell_names_num, cell_set_size, cell_x, cell_y)
 
+
 def load_cell_gene_data(data_dir, ppi_dense_path, cell_row_norm=False, gene_norm=True):
     ppi_df = pd.read_csv(ppi_dense_path, index_col=0)
     ppi_gene_names = list(ppi_df.columns)
@@ -479,16 +480,16 @@ def chebyshev_polynomials(adj, k):
 
 def load_sparse_data(name, sparse_input):
     placeholders = {
-        'coo_row_ind': tf.placeholder(tf.int32),
-        'coo_col_ind': tf.placeholder(tf.int32),
+        'coo_row_ind': tf.placeholder(tf.int64),
+        'coo_col_ind': tf.placeholder(tf.int64),
         'coo_val': tf.placeholder(tf.float32)
     }
     with tf.variable_scope(name):
         input_data = {
             'coo_row_ind': tf.Variable(placeholders['coo_row_ind'], trainable=False, name='coo_row_ind',
-                                       validate_shape=False, dtype=tf.int32, collections=[]),
+                                       validate_shape=False, dtype=tf.int64, collections=[]),
             'coo_col_ind': tf.Variable(placeholders['coo_col_ind'], trainable=False, name='coo_col_ind',
-                                       validate_shape=False, dtype=tf.int32, collections=[]),
+                                       validate_shape=False, dtype=tf.int64, collections=[]),
             'coo_val': tf.Variable(placeholders['coo_val'], trainable=False, name='coo_val',
                                    validate_shape=False, dtype=tf.float32, collections=[])
         }
@@ -496,8 +497,8 @@ def load_sparse_data(name, sparse_input):
         # placeholders['coo_row_ind']: np.int32(sparse_input[0][:,0]),
         # placeholders['coo_col_ind']: np.int32(sparse_input[0][:,1]),
         # placeholders['coo_val']: np.float32(sparse_input[1])
-        placeholders['coo_row_ind']: np.int32(sparse_input[0]),
-        placeholders['coo_col_ind']: np.int32(sparse_input[1]),
+        placeholders['coo_row_ind']: np.array(sparse_input[0]),
+        placeholders['coo_col_ind']: np.array(sparse_input[1]),
         placeholders['coo_val']: np.float32(sparse_input[2])
     }
     return input_data, feed_dict
@@ -509,7 +510,7 @@ def load_dense_data(cell_num, gene_names_num, cell_label_num, data):
         'cell_labels': tf.placeholder(tf.int32, shape=(cell_num, cell_label_num)),
         'labels_mask': tf.placeholder(tf.float32),
         # 'dropout': tf.placeholder(tf.float32, shape=1),
-        'dropout': tf.placeholder_with_default(0., shape=()),
+        # 'dropout': tf.placeholder_with_default(0., shape=()),
         'num_features_nonzero': tf.placeholder(tf.int32)  # helper variable for sparse dropout
     }
     input_data = {
@@ -519,8 +520,8 @@ def load_dense_data(cell_num, gene_names_num, cell_label_num, data):
                                    validate_shape=False, dtype=tf.int32, collections=[]),
         'labels_mask': tf.Variable(placeholders['labels_mask'], trainable=False, name='labels_mask',
                                validate_shape=False, dtype=tf.float32, collections=[]),
-        'dropout': tf.Variable(placeholders['dropout'], trainable=False, name='dropout',
-                               validate_shape=False, dtype=tf.float32, collections=[]),
+        # 'dropout': tf.Variable(placeholders['dropout'], trainable=False, name='dropout',
+        #                        validate_shape=False, dtype=tf.float32, collections=[]),
         'num_features_nonzero': tf.Variable(placeholders['num_features_nonzero'], trainable=False, name='num_features_nonzero',
                                validate_shape=False, dtype=tf.int32, collections=[])
     }
@@ -528,7 +529,7 @@ def load_dense_data(cell_num, gene_names_num, cell_label_num, data):
         placeholders['cell_gene_weight']: data[0],
         placeholders['cell_labels']: data[1],
         placeholders['labels_mask']: data[2],
-        placeholders['dropout']: data[3],
-        placeholders['num_features_nonzero']: data[4]
+        # placeholders['dropout']: data[3],
+        placeholders['num_features_nonzero']: data[3]
     }
     return input_data, feed_dict

@@ -181,7 +181,7 @@ class GCN(Model):
 
 
 class CellGeneGCN(Model):
-  def __init__(self, index, input_data_adj, input_data_gene_feature, input_data_dense, gene_names_num, input_dim,
+  def __init__(self, index, dropout_rate, input_data_adj, input_data_gene_feature, input_data_dense, gene_names_num, input_dim,
                output_dim, **kwargs):
     super(CellGeneGCN, self).__init__(**kwargs)
     self.input_data_adj = input_data_adj
@@ -202,8 +202,11 @@ class CellGeneGCN(Model):
     self.gene_names_num = gene_names_num
     # self.input_dim = self.inputs.get_shape().as_list()[1]  # To be supported in future Tensorflow versions
     self.output_dim = output_dim
+    self.step = tf.Variable(0, trainable=False)
+    self.rate = tf.train.exponential_decay(FLAGS.learning_rate, self.step, 1, 0.9999)
+    self.dropout_rate = dropout_rate
 
-    self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
+    self.optimizer = tf.train.AdamOptimizer(learning_rate=self.rate)
 
     self.build()
 
@@ -228,7 +231,7 @@ class CellGeneGCN(Model):
                                         input_data_adj=self.adj,
                                         input_data_dense=self.input_data_dense,
                                         act=tf.nn.relu,
-                                        dropout=True,
+                                        dropout=self.dropout_rate,
                                         sparse_inputs=True,
                                         logging=self.logging)
 
@@ -247,7 +250,8 @@ class CellGeneGCN(Model):
       gene_emb = self.gcn_layer(self.gene_features)
       cell_emb = tf.matmul( self.cell_gene_weight, gene_emb)
       cell_activation = tf.nn.relu(cell_emb)
-      self.outputs = tf.layers.Dense(self.output_dim)(cell_activation)
+      cell_emb1 = tf.layers.dense(cell_activation, 32, activation=tf.nn.relu)
+      self.outputs = tf.layers.Dense(self.output_dim)(cell_emb1)
       self.probas = tf.nn.softmax(self.outputs)
 
     # self.activations.append(self.inputs)
@@ -264,7 +268,7 @@ class CellGeneGCN(Model):
     self._loss()
     self._accuracy()
 
-    self.opt_op = self.optimizer.minimize(self.loss)
+    self.opt_op = self.optimizer.minimize(self.loss, global_step=self.step)
 
   def predict(self):
     return tf.nn.softmax(self.outputs)

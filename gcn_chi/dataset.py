@@ -20,7 +20,7 @@ class DataSet:
     self.columns = columns
     self.samples = data
     self.begin = begin
-    self.index = list(range(self.samples + self.begin))
+    self.index = np.array(range(self.samples)) + self.begin
     self.label = label
 
 
@@ -32,6 +32,7 @@ class DataSet:
 
     if shuffle:
       self.shuffle_index()
+
 
     print("batch_size is {}, have {} samples, step nums is {}".format(batch_size, self.samples,
                                                                                     self.steps))
@@ -55,16 +56,16 @@ class DataSet:
     return batch_index, batch_label
 
   def sample_batch(self):
-    index = np.random.choice(list(range(self.samples + self.begin)), self.batch_size)
+    index = np.random.choice(np.array(range(self.samples)) + self.begin, self.batch_size)
     return index
 
   def shuffle_index(self):
-    self.index = np.random.permutation(list(range(self.samples + self.begin)))
+    self.index = np.random.permutation(np.array(range(self.samples)) + self.begin)
 
   def reset(self):
     self.cur_pos = 0
     self.batch_counter = 0
-    self.index = list(range(self.samples + self.begin))
+    self.index = np.array(range(self.samples)) + self.begin
     if self.shuffle:
       self.shuffle_index()
 

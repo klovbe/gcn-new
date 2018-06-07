@@ -137,10 +137,11 @@ class GraphConvolution(Layer):
                  featureless=False, **kwargs):
         super(GraphConvolution, self).__init__(**kwargs)
 
-        if dropout:
-            self.dropout = input_data_dense['dropout']
-        else:
-            self.dropout = 0.
+        # if dropout:
+        #     self.dropout = input_data_dense['dropout']
+        # else:
+        #     self.dropout = 0.
+        self.dropout = dropout
 
         self.act = act
         self.support = input_data_adj
