@@ -183,6 +183,18 @@ log_df = pd.DataFrame(log_list, columns=["train_loss", "train_acc", "train_kappa
 log_path = os.path.join(out_dir, "log.csv")
 log_df.to_csv(log_path, index=False, encoding="utf-8")
 
+def get_cell_emb(dataset):
+    emb_list = []
+    while True:
+        a = dataset.next()
+        ind, _ = a
+        if ind is None:
+            val_dataset.reset()
+            break
+        feed_dict = {index: ind}
+        batch_cell_emb = sess.run([model.cell_emb], feed_dict=feed_dict)
+        emb_list.append(batch_cell_emb)
+    emb_array = np.concatenate(emb_list, axis=0)
 
 # # Testing
 # test_cost, test_acc, test_duration = evaluate(features, support, y_test, test_mask, placeholders)
