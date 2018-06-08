@@ -249,6 +249,7 @@ class CellGeneGCN(Model):
       self._build()
       gene_emb = self.gcn_layer(self.gene_features)
       cell_emb = tf.matmul( self.cell_gene_weight, gene_emb)
+      self.cell_emb = cell_emb
       cell_activation = tf.nn.relu(cell_emb)
       cell_emb1 = tf.layers.dense(cell_activation, 32, activation=tf.nn.relu)
       self.outputs = tf.layers.Dense(self.output_dim)(cell_emb1)

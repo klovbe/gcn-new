@@ -112,7 +112,7 @@ def load_cell_gene_data_variable(data_dir, ppi_dense_path, cell_row_norm=True, g
 
     cell_train_x, cell_train_y, cell_val_x, cell_val_y, cell_test_x, cell_test_y = construct_train_val_test(df_list, label_list)
 
-    cell_labels = set(labels)
+    cell_labels = sorted(set(labels))
     cell_labels_to_id = {label: i for i, label in enumerate(cell_labels)}
     cell_labels_num = len(cell_labels)
     cell_names_num = len(labels)
@@ -146,7 +146,7 @@ def load_cell_gene_data_variable(data_dir, ppi_dense_path, cell_row_norm=True, g
     # # build symmetric adjacency matrix
     # gene_adj = gene_adj + gene_adj.T.multiply(gene_adj.T > gene_adj) - gene_adj.multiply(gene_adj.T > gene_adj)
 
-    return (ppi_df.values, coo_gene_feature, gene_labels, cell_names_num, cell_set_size, cell_x, cell_y)
+    return (ppi_df.values, coo_gene_feature, gene_labels, cell_names_num, cell_set_size, cell_x, cell_y, cell_labels)
 
 
 def load_cell_gene_data(data_dir, ppi_dense_path, cell_row_norm=False, gene_norm=True):

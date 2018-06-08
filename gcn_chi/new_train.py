@@ -23,6 +23,8 @@ flags.DEFINE_string('dataset', 'baron', 'Dataset string.')  # 'cora', 'citeseer'
 # flags.DEFINE_string("data_dir", "F:/single_cell_data/baron", "data_dir")
 flags.DEFINE_string("data_dir", "./data/baron_random", "data_dir")
 flags.DEFINE_string("ppi_path", "./data/baron_random/ppi_dense.csv", "ppi path")
+flags.DEFINE_string("save_dir", "./out", "save dir[out_{run_name}]")
+flags.DEFINE_string("run_name", "t", "run_name")
 flags.DEFINE_string('model', 'CellGeneGCN', 'Model string.')  # 'gcn', 'gcn_cheby', 'dense'
 flags.DEFINE_float('learning_rate', 0.0005, 'Initial learning rate.')
 flags.DEFINE_integer('epochs', 1000, 'Number of epochs to train.')
@@ -34,8 +36,12 @@ flags.DEFINE_integer('max_degree', 3, 'Maximum Chebyshev polynomial degree.')
 flags.DEFINE_integer('batch_size', 256, 'batch size.')
 flags.DEFINE_bool('permutation', False, 'to decide whether to permutation all data among batches.')
 
+out_dir = os.path.join(FLAGS.save_dir, FLAGS.run_name)
+if os.path.exists(out_dir) == False:
+    os.makedirs(out_dir)
+
 print("loading data...")
-gene_adj, coo_gene_feature, gene_labels, cell_names_num, cell_set_size, cell_x, cell_y\
+gene_adj, coo_gene_feature, gene_labels, cell_names_num, cell_set_size, cell_x, cell_y, cell_labels\
  = load_cell_gene_data_variable(FLAGS.data_dir, FLAGS.ppi_path)
 
 if FLAGS.permutation:
@@ -88,19 +94,23 @@ sess.run(tf.variables_initializer(
 # Init variables
 sess.run(tf.global_variables_initializer())
 
+val_out_dir = os.path.join(out_dir, "val_out")
+if os.path.exists(val_out_dir) == False:
+    os.makedirs(val_out_dir)
 
+log_list = []
+val_acc_list = []
 
+train_embs = []
+val_embs = []
 
+best_val_model = None
 
+t = time.time()
 
-
-
-
-cost_val = []
 # Train model
 for epoch in range(FLAGS.epochs):
 
-    t = time.time()
     tot_train_loss = 0.
     pred_probas = []
     label = []
@@ -112,15 +122,16 @@ for epoch in range(FLAGS.epochs):
             break
         # Training step
         feed_dict = {index: ind, dropout_rate: FLAGS.dropout}
-        outs = sess.run([model.opt_op, model.loss, model.accuracy, model.probas], feed_dict=feed_dict)
-        pred_probas.append(outs[-1])
-        tot_train_loss += outs[1] * len(ind)
+        _, b_cell_emb, b_loss, b_acc, b_probas = sess.run([model.opt_op, model.cell_emb, model.loss, model.accuracy, model.probas], feed_dict=feed_dict)
+        pred_probas.append(b_probas)
+        tot_train_loss += b_loss* len(ind)
         label.append(label_p)
     pred_probas = np.concatenate(pred_probas, axis=0)
     label = np.concatenate(label, axis=0)
     train_acc = accuracy(pred_probas, label)
     train_kappa = kappa_score(pred_probas, label)
     avg_train_loss = tot_train_loss / train_dataset.samples
+
 
     tot_val_loss = 0.
     pred_probas = []
@@ -133,29 +144,44 @@ for epoch in range(FLAGS.epochs):
             break
         # Training step
         feed_dict = {index: ind}
-        val_loss, probas = sess.run([model.loss, model.probas], feed_dict=feed_dict)
+        batch_val_loss, probas = sess.run([model.loss, model.probas], feed_dict=feed_dict)
         pred_probas.append(probas)
-        tot_val_loss += val_loss * len(ind)
+        tot_val_loss += batch_val_loss * len(ind)
     pred_probas = np.concatenate(pred_probas, axis=0)
+
+    val_pred_cls = np.argmax(pred_probas, axis=1).reshape(-1,1)
+    val_true_cls = np.argmax(val_dataset.label[sum(cell_set_size[0:3]):], axis=1).reshape(-1,1)
+    val_out = np.concatenate([val_true_cls, val_pred_cls, pred_probas], axis=1)
+    val_df = pd.DataFrame(val_out, columns=["true", "pred"] + cell_labels)
+    val_path = os.path.join(val_out_dir, "val_{}.csv".format(epoch))
+    val_df.to_csv(val_path, index=False, encoding="utf-8")
+
     val_acc = accuracy(pred_probas, val_dataset.label[sum(cell_set_size[0:3]):])
     val_kappa = kappa_score(pred_probas, val_dataset.label[sum(cell_set_size[0:3]):])
     avg_val_loss = tot_val_loss / val_dataset.samples
-
-    cost_val.append(avg_val_loss)
+    val_acc_list.append(val_acc)
 
     # Print results
     print("Epoch:", '%04d' % (epoch + 1), "train_loss=", "{:.3f}".format(avg_train_loss),
           "train_acc=", "{:.3f}".format(train_acc), "train_kappa=", "{:.3f}".format(train_kappa),
-          "val_loss=", "{:.3f}".format(cost_val[-1]),
+          "val_loss=", "{:.3f}".format(avg_val_loss),
           "val_acc=", "{:.3f}".format(val_acc),  "val_kappa=", "{:.3f}".format(val_kappa),
           "time=", "{:.3f}".format(time.time() - t))
 
-    if epoch > FLAGS.early_stopping and cost_val[-1] > np.mean(cost_val[-(FLAGS.early_stopping + 1):-1]):
+    log_list.append([avg_train_loss, train_acc, train_kappa, avg_val_loss, val_acc, val_kappa])
+
+    if epoch > FLAGS.early_stopping and val_acc_list[-1] > np.mean(val_acc_list[-(FLAGS.early_stopping + 1):-1]):
         print("Early stopping...")
         break
+
 t1 = time.time()
 print("Optimization Finished!")
 print("total cost time {}".format(t1 - t))
+
+
+log_df = pd.DataFrame(log_list, columns=["train_loss", "train_acc", "train_kappa", "val_loss", "val_acc", "val_kappa"])
+log_path = os.path.join(out_dir, "log.csv")
+log_df.to_csv(log_path, index=False, encoding="utf-8")
 
 
 # # Testing
