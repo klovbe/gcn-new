@@ -5,7 +5,7 @@ import time
 import tensorflow as tf
 
 from gcn_chi.utils import *
-from gcn_chi.models import CellGeneGCN, MLP
+from gcn_chi.models import CellGeneGCN, MLP, ValModel
 from gcn_chi.dataset import DataSet
 from gcn_chi.metrics import *
 
@@ -39,6 +39,12 @@ flags.DEFINE_bool('permutation', False, 'to decide whether to permutation all da
 out_dir = os.path.join(FLAGS.save_dir, FLAGS.run_name)
 if os.path.exists(out_dir) == False:
     os.makedirs(out_dir)
+val_out_dir = os.path.join(out_dir, "val_out")
+if os.path.exists(val_out_dir) == False:
+    os.makedirs(val_out_dir)
+model_save_dir = os.path.join(out_dir, "model")
+if os.path.exists(model_save_dir) == False:
+    os.makedirs(model_save_dir)
 
 print("loading data...")
 gene_adj, coo_gene_feature, gene_labels, cell_names_num, cell_set_size, cell_x, cell_y, cell_labels\
@@ -94,9 +100,6 @@ sess.run(tf.variables_initializer(
 # Init variables
 sess.run(tf.global_variables_initializer())
 
-val_out_dir = os.path.join(out_dir, "val_out")
-if os.path.exists(val_out_dir) == False:
-    os.makedirs(val_out_dir)
 
 log_list = []
 val_acc_list = []
@@ -104,7 +107,8 @@ val_acc_list = []
 train_embs = []
 val_embs = []
 
-best_val_model = None
+best_val_acc = -1.0
+best_model_path = None
 
 t = time.time()
 
@@ -161,6 +165,15 @@ for epoch in range(FLAGS.epochs):
     avg_val_loss = tot_val_loss / val_dataset.samples
     val_acc_list.append(val_acc)
 
+    if best_val_acc < val_acc:
+        if epoch > 5:
+            model_save_path = os.path.join(model_save_dir, "{}.ckpt".format(epoch))
+            model.save(model_save_path, sess=sess)
+            print("save best model to {}".format(model_save_path))
+            best_model_path = model_save_path
+        print("best val acc change: {} ==> {}".format(best_val_acc, val_acc))
+        best_val_acc = val_acc
+
     # Print results
     print("Epoch:", '%04d' % (epoch + 1), "train_loss=", "{:.3f}".format(avg_train_loss),
           "train_acc=", "{:.3f}".format(train_acc), "train_kappa=", "{:.3f}".format(train_kappa),
@@ -178,23 +191,43 @@ t1 = time.time()
 print("Optimization Finished!")
 print("total cost time {}".format(t1 - t))
 
-
 log_df = pd.DataFrame(log_list, columns=["train_loss", "train_acc", "train_kappa", "val_loss", "val_acc", "val_kappa"])
 log_path = os.path.join(out_dir, "log.csv")
 log_df.to_csv(log_path, index=False, encoding="utf-8")
 
-def get_cell_emb(dataset):
+print("loading best model from {}".format(best_model_path))
+model.load(save_path=best_model_path, sess=sess)
+val_df = ValModel(sess, model, val_dataset, index, cell_labels, cell_set_size)
+load_val_acc = sklearn.metrics.accuracy_score(val_df["true"].values, val_df["pred"].values)
+print("load model's acc is {}".format(load_val_acc))
+
+def get_cell_emb(sess, model_cls, dataset, cell_labels):
     emb_list = []
+    cell_name_list = []
     while True:
         a = dataset.next()
-        ind, _ = a
+        ind, b_label = a
         if ind is None:
             val_dataset.reset()
             break
         feed_dict = {index: ind}
-        batch_cell_emb = sess.run([model.cell_emb], feed_dict=feed_dict)
+        batch_cell_emb, = sess.run([model_cls.cell_emb], feed_dict=feed_dict)
         emb_list.append(batch_cell_emb)
+        b_names = [cell_labels[v] for v in np.argmax(b_label, axis=1)]
+        cell_name_list.extend(b_names)
     emb_array = np.concatenate(emb_list, axis=0)
+    return emb_array,cell_name_list
+
+def save_emb(emb_array, name_list, save_path):
+    m, n = emb_array.shape
+    assert m == len(name_list)
+    a = np.concatenate( (np.array(name_list).reshape(-1,1), emb_array), axis=1)
+    pd.DataFrame(a).to_csv(save_path, sep=" ", index=False, header=False)
+
+emb_array, cell_name_list = get_cell_emb(sess, model, val_dataset, cell_labels)
+val_emb_path = os.path.join(out_dir, "val_emb.csv")
+save_emb(emb_array, cell_name_list, val_emb_path)
+
 
 # # Testing
 # test_cost, test_acc, test_duration = evaluate(features, support, y_test, test_mask, placeholders)

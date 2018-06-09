@@ -1,5 +1,6 @@
 #encoding=utf-8
 import os
+import pandas as pd
 from gcn_chi.layers import *
 from gcn_chi.metrics import *
 
@@ -68,19 +69,19 @@ class Model(object):
     def _accuracy(self):
         raise NotImplementedError
 
-    def save(self, save_dir, sess=None):
+    def save(self, save_path, sess=None):
         if not sess:
             raise AttributeError("TensorFlow session not provided.")
         saver = tf.train.Saver(self.vars)
-        save_path = os.path.join(save_dir, "%s.ckpt" % self.name)
+        # save_path = os.path.join(save_dir, "%s.ckpt" % self.name)
         saver.save(sess, save_path)
         print("Model saved in file: %s" % save_path)
 
-    def load(self, save_dir, sess=None):
+    def load(self, save_path, sess=None):
         if not sess:
             raise AttributeError("TensorFlow session not provided.")
         saver = tf.train.Saver(self.vars)
-        save_path = os.path.join(save_dir, "%s.ckpt" % self.name)
+        # save_path = os.path.join(save_dir, "%s.ckpt" % self.name)
         saver.restore(sess, save_path)
         print("Model restored from file: %s" % save_path)
 
@@ -273,3 +274,30 @@ class CellGeneGCN(Model):
 
   def predict(self):
     return tf.nn.softmax(self.outputs)
+
+
+def ValModel(sess, model_cls, val_dataset, index_placeholder, cell_labels, cell_set_size):
+    tot_val_loss = 0.
+    pred_probas = []
+    while True:
+      a = val_dataset.next()
+      ind, _ = a
+      if ind is None:
+        val_dataset.reset()
+        break
+      # Training step
+      feed_dict = {index_placeholder: ind}
+      batch_val_loss, probas = sess.run([model_cls.loss, model_cls.probas], feed_dict=feed_dict)
+      pred_probas.append(probas)
+      tot_val_loss += batch_val_loss * len(ind)
+    pred_probas = np.concatenate(pred_probas, axis=0)
+
+    val_pred_cls = np.argmax(pred_probas, axis=1).reshape(-1, 1)
+    val_true_cls = np.argmax(val_dataset.label[sum(cell_set_size[0:3]):], axis=1).reshape(-1, 1)
+    val_out = np.concatenate([val_true_cls, val_pred_cls, pred_probas], axis=1)
+    val_df = pd.DataFrame(val_out, columns=["true", "pred"] + cell_labels)
+    return val_df
+
+    # val_path = os.path.join(val_out_dir, "val_{}.csv".format(epoch))
+    # val_df.to_csv(val_path, index=False, encoding="utf-8")
+
